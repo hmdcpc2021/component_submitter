@@ -1,6 +1,6 @@
 from werkzeug.exceptions import HTTPException
 from flask import Flask, jsonify
-import logging
+import logging, subprocess
 
 
 from submitter.apis.v1.api import v1blueprint
@@ -62,7 +62,6 @@ def get_info():
         return jsonify({"error": str(e)}), 500
     
 
-@app.route('/v2.0/joined-info', methods=['GET'])
 def get_joined_info():
     """
     Get joined information using internal IPs from different adaptors.
@@ -71,8 +70,10 @@ def get_joined_info():
         # Get MiCADO info from KubernetesAdaptor
         k8s_ip_address, k8s_port_number = kubernetes_adaptor.info()
 
-        # Get MiCADO info from OccopusAdaptor
-        occopus_ips_info = occopus_adaptor.info()
+        # Retrieve internal IPs of Kubernetes Pods using kubectl command
+        kubectl_command = "kubectl get pods -o=jsonpath='{range .items[*]}{.status.podIP}{"\n"}{end}'"
+        result = subprocess.run(kubectl_command, shell=True, stdout=subprocess.PIPE, text=True)
+        k8s_internal_ips = result.stdout.strip().split('\n')
 
         # Assuming occopus_ips_info is a list of dictionaries with "internal_ip" keys
         # Perform the join based on internal IPs
@@ -83,7 +84,8 @@ def get_joined_info():
                 joined_info.append({
                     "internal_ip": internal_ip,
                     "k8s_ip_address": k8s_ip_address,
-                    "k8s_port_number": k8s_port_number
+                    "k8s_port_number": k8s_port_number,
+                    "k8s_internal_ips": k8s_internal_ips
                 })
 
         return jsonify(joined_info)
