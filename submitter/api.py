@@ -60,3 +60,32 @@ def get_info():
         return jsonify(ips_info)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
+
+@app.route('/v2.0/joined-info', methods=['GET'])
+def get_joined_info():
+    """
+    Get joined information using internal IPs from different adaptors.
+    """
+    try:
+        # Get MiCADO info from KubernetesAdaptor
+        k8s_ip_address, k8s_port_number = kubernetes_adaptor.info()
+
+        # Get MiCADO info from OccopusAdaptor
+        occopus_ips_info = occopus_adaptor.info()
+
+        # Assuming occopus_ips_info is a list of dictionaries with "internal_ip" keys
+        # Perform the join based on internal IPs
+        joined_info = []
+        for occopus_node in occopus_ips_info:
+            internal_ip = occopus_node.get("internal_ip")
+            if internal_ip:
+                joined_info.append({
+                    "internal_ip": internal_ip,
+                    "k8s_ip_address": k8s_ip_address,
+                    "k8s_port_number": k8s_port_number
+                })
+
+        return jsonify(joined_info)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
