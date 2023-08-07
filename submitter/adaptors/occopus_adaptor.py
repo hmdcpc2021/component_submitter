@@ -10,6 +10,7 @@ import pykube
 import docker
 import requests
 from toscaparser.tosca_template import ToscaTemplate
+import subprocess
 
 from submitter.abstracts import base_adaptor as abco
 from submitter.abstracts.exceptions import AdaptorCritical
@@ -647,3 +648,25 @@ class OccopusAdaptor(abco.Adaptor):
             logger.debug("File deleted: {}".format(self.infra_def_path_output_tmp))
         except OSError:
             pass
+
+    def info(self):
+        """
+        Get internal and external IPs from MiCADO using kubectl command
+        """
+        logger.info("Getting IPs from MiCADO...")
+        if not self.created:
+            logger.info("The infrastructure is not created yet.")
+            return {}
+
+        internal_ip_cmd = "kubectl get service -n micado -l app.kubernetes.io/name=micado-master -o jsonpath='{.items[0].spec.clusterIP}'"
+        external_ip_cmd = "kubectl get service -n micado -l app.kubernetes.io/name=micado-master -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}'"
+
+        try:
+            internal_ip = subprocess.check_output(internal_ip_cmd, shell=True, text=True).strip()
+            external_ip = subprocess.check_output(external_ip_cmd, shell=True, text=True).strip()
+            logger.info(f"Internal IP: {internal_ip}")
+            logger.info(f"External IP: {external_ip}")
+            return {"internal_ip": internal_ip, "external_ip": external_ip}
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Error executing kubectl command: {e}")
+            return {}
