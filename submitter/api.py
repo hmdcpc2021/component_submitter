@@ -80,7 +80,7 @@ def get_joined_info():
         occopus_ips_info = occopus_adaptor.info()
 
         # Retrieve internal IPs of Occopus-managed nodes using kubectl command
-        kubectl_occopus_command = "kubectl get <occopus_resource> -o=jsonpath='{range .items[*]}{.status.internalIP}{\"\\n\"}{end}'"        
+        kubectl_occopus_command = "kubectl get pods -o=jsonpath='{range .items[*]}{.status.internalIP}{\"\\n\"}{end}'"        
         occopus_result = subprocess.run(kubectl_occopus_command, shell=True, stdout=subprocess.PIPE, text=True)
         occopus_internal_ips = occopus_result.stdout.strip().split('\n')
 
