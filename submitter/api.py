@@ -62,6 +62,7 @@ def get_info():
         return jsonify({"error": str(e)}), 500
     
 
+@app.route('/v2.0/joined-info', methods=['GET'])
 def get_joined_info():
     """
     Get joined information using internal IPs from different adaptors.
@@ -71,11 +72,18 @@ def get_joined_info():
         k8s_ip_address, k8s_port_number = kubernetes_adaptor.info()
 
         # Retrieve internal IPs of Kubernetes Pods using kubectl command
-        kubectl_command = "kubectl get pods -o=jsonpath='{range .items[*]}{.status.podIP}{"\n"}{end}'"
-        result = subprocess.run(kubectl_command, shell=True, stdout=subprocess.PIPE, text=True)
-        k8s_internal_ips = result.stdout.strip().split('\n')
+        kubectl_k8s_command = "kubectl get pods -o=jsonpath='{range .items[*]}{.status.podIP}{\"\\n\"}{end}'"
+        k8s_result = subprocess.run(kubectl_k8s_command, shell=True, stdout=subprocess.PIPE, text=True)
+        k8s_internal_ips = k8s_result.stdout.strip().split('\n')
 
-        # Assuming occopus_ips_info is a list of dictionaries with "internal_ip" keys
+        # Fetch Occopus-managed node information using your occopus_adaptor
+        occopus_ips_info = occopus_adaptor.info()
+
+        # Retrieve internal IPs of Occopus-managed nodes using kubectl command
+        kubectl_occopus_command = "kubectl get <occopus_resource> -o=jsonpath='{range .items[*]}{.status.internalIP}{\"\\n\"}{end}'"        
+        occopus_result = subprocess.run(kubectl_occopus_command, shell=True, stdout=subprocess.PIPE, text=True)
+        occopus_internal_ips = occopus_result.stdout.strip().split('\n')
+
         # Perform the join based on internal IPs
         joined_info = []
         for occopus_node in occopus_ips_info:
@@ -85,7 +93,8 @@ def get_joined_info():
                     "internal_ip": internal_ip,
                     "k8s_ip_address": k8s_ip_address,
                     "k8s_port_number": k8s_port_number,
-                    "k8s_internal_ips": k8s_internal_ips
+                    "k8s_internal_ips": k8s_internal_ips,
+                    "occopus_internal_ips": occopus_internal_ips
                 })
 
         return jsonify(joined_info)
