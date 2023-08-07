@@ -479,3 +479,37 @@ def query_port(service_name):
     except Exception:
         return f"Service {service_name} not found"
     return service.obj.get("spec", {}).get("ports", {})
+
+def info(self):
+        """Get IP address and port number of the MiCADO pods."""
+        logger.info("Getting IP address and port number of the MiCADO pods...")
+        self.status = "Getting info..."
+        
+        # You can use kubectl to get the IP address and port number of the MiCADO pods.
+        # Assuming the MiCADO pods have the label "app.kubernetes.io/instance" set to self.short_id
+        operation = [
+            "kubectl",
+            "get",
+            "pods",
+            "-l",
+            f"app.kubernetes.io/instance={self.short_id}",
+            "-o",
+            "jsonpath='{.items[*].status.podIP}:{.items[*].spec.containers[0].ports[0].containerPort}'",
+        ]
+
+        try:
+            logger.debug(f"Executing {operation}")
+            result = subprocess.run(operation, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, shell=True)
+
+            if result.returncode == 0:
+                output = result.stdout.decode("utf-8").strip("'")
+                ip_address, port_number = output.split(":")
+                logger.info(f"MiCADO IP address: {ip_address}, Port number: {port_number}")
+                return ip_address, int(port_number)
+            else:
+                logger.error(f"Error retrieving MiCADO info: {result.stderr.decode('utf-8')}")
+                raise AdaptorCritical("Error retrieving MiCADO info.")
+        
+        except subprocess.CalledProcessError as e:
+            logger.error(f"kubectl: {e.stderr.decode('utf-8')}")
+            raise AdaptorCritical(f"kubectl: {e.stderr.decode('utf-8')}")
