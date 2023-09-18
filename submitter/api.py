@@ -31,22 +31,5 @@ def not_found_errors(error):
         getattr(error, "code", 500),
     )
 
-@app.route('/v2.0/join-internal-ips')
-def join_internal_ips():
-    try:
-        # Obtain the internal IPs from both adaptors using the provided 'info' methods
-        k8s_internal_ip = kubernetes_adaptor.info()["internal_ip"]
-        occopus_internal_ip = occopus_adaptor.info()["internal_ip"]
-        
-        # Perform the join operation (assuming you want to concatenate the IPs with a comma)
-        joined_ips = f"{k8s_internal_ip},{occopus_internal_ip}"
-        
-        return jsonify({"joined_internal_ips": joined_ips})
-    
-    except Exception as e:
-        error_message = f"Error while joining internal IPs: {str(e)}"
-        logging.error(error_message)
-        return jsonify({"error": error_message}), 500
-
 if __name__ == "__main__":
     app.run(debug=True)
