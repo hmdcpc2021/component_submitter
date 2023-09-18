@@ -5,7 +5,6 @@ import filecmp
 import copy
 import base64
 import json
-import pykube
 import kubernetes_validate
 from kubernetes_validate.utils import (
     SchemaNotFoundError,
@@ -20,7 +19,7 @@ from submitter import utils
 from submitter.abstracts import base_adaptor
 from submitter.abstracts.exceptions import AdaptorCritical, TranslateError
 from .zorp import ZorpManifests
-from .translator import get_translator
+from .manifest import get_manifest_type
 from .tosca import Prefix, NodeType, Interface, NetworkProxy
 
 logger = logging.getLogger("adaptors.k8s_adaptor")
@@ -109,7 +108,7 @@ class KubernetesAdaptor(base_adaptor.Adaptor):
             try:
                 kubernetes_validate.validate(manifest, k8s_version, strict=True)
             except ValidationError as err:
-                message = f"Invalid K8s Manifest: {err.message}"
+                message = f"Invalid K8s Manifest: {err.message}\n\n{manifest}"
                 logger.error(message)
                 raise AdaptorCritical(message) from None
             except (InvalidSchemaError, SchemaNotFoundError):
@@ -140,12 +139,12 @@ class KubernetesAdaptor(base_adaptor.Adaptor):
         if not utils.check_lifecycle(node, Interface.KUBERNETES):
             return
 
-        translator = get_translator(node)
-        tosca_translator = translator.from_toscaparser(
+        manifest_type = get_manifest_type(node)
+        manifest = manifest_type.from_toscaparser(
             self.short_id, node, self.tpl.repositories
         )
 
-        manifests = tosca_translator.build()
+        manifests = manifest.build()
         self.manifests += manifests
 
     def _translate_monitoring_policy(self, policy):
@@ -302,8 +301,8 @@ class KubernetesAdaptor(base_adaptor.Adaptor):
             logger.error(f"kubectl: {e.stderr}")
             raise AdaptorCritical(f"kubectl: {e.stderr}")
 
-        logger.info("Kube objects deployed, trying to get outputs...")
-        self._get_outputs()
+        #logger.info("Kube objects deployed, trying to get outputs...")
+        #self._get_outputs()
         logger.info("Execution complete")
         self.status = "Executed"
 
@@ -396,18 +395,6 @@ class KubernetesAdaptor(base_adaptor.Adaptor):
 
         self.status = "Clean!"
 
-    def query(self, query):
-        """ Query """
-        logger.info(f"Query ID {self.ID}")
-        kube_config = pykube.KubeConfig.from_file("~/.kube/config")
-        api = pykube.HTTPClient(kube_config)
-
-        if query == "nodes":
-            nodes = pykube.Node.objects(api)
-            return [x.name for x in nodes.iterator()]
-        elif query == "services":
-            pods = pykube.Pod.objects(api)
-            return [x.name for x in pods.iterator()]
 
     def _get_outputs(self):
         """Get outputs and their resultant attributes"""
@@ -421,9 +408,7 @@ class KubernetesAdaptor(base_adaptor.Adaptor):
                 logger.debug(f"Inspect node: {node.name}")
                 query = output.value.attribute_name
                 if query == "port":
-                    self.output.setdefault(node.name, {})[query] = query_port(
-                        node.name
-                    )
+                    pass # TODO: find ports using K8s-py
             else:
                 logger.warning(f"{node.name} is not a Docker container!")
 
@@ -442,45 +427,8 @@ class KubernetesAdaptor(base_adaptor.Adaptor):
             )
             self.status = "DRY-RUN Deployment"
             return True
-
-
-def _name_check_node(node):
-    errors = []
-    if "_" in node.name:
-        errors.append("TOSCA node names")
-    if "_" in (node.get_property_value("name") or ""):
-        errors.append("property: 'name'")
-    if "_" in (node.get_property_value("container_name") or ""):
-        errors.append("property: 'container_name'")
-
-    if errors:
-        errors = ", ".join(errors)
-        logger.error(
-            f"Failed name convention check (underscores) on node: {node.name}"
-        )
-        raise AdaptorCritical(
-            f"Underscores in node {node.name} not allowed for {errors}"
-        )
-
-
-def query_port(service_name):
-    """Queries a specific service for its port listing
-
-    Args:
-        service_name (string): Name of service to query
-
-    Returns:
-        dict: port listing
-    """
-    kube_config = pykube.KubeConfig.from_file("~/.kube/config")
-    api = pykube.HTTPClient(kube_config)
-    try:
-        service = pykube.Service.objects(api).get_by_name(service_name)
-    except Exception:
-        return f"Service {service_name} not found"
-    return service.obj.get("spec", {}).get("ports", {})
-
-def info(self):
+            
+    def query(self):
         """Get IP address and port number of the MiCADO pods."""
         logger.info("Getting IP address and port number of the MiCADO pods...")
         self.status = "Getting info..."
@@ -513,3 +461,20 @@ def info(self):
         except subprocess.CalledProcessError as e:
             logger.error(f"kubectl: {e.stderr.decode('utf-8')}")
             raise AdaptorCritical(f"kubectl: {e.stderr.decode('utf-8')}")
+
+
+def _name_check_node(node):
+    errors = []
+    if "_" in (node.get_property_value("name") or ""):
+        errors.append("property: 'name'")
+    if "_" in (node.get_property_value("container_name") or ""):
+        errors.append("property: 'container_name'")
+
+    if errors:
+        errors = ", ".join(errors)
+        logger.error(
+            f"Failed name convention check (underscores) on node: {node.name}"
+        )
+        raise AdaptorCritical(
+            f"Underscores in properties of {node.name} not allowed for {errors}"
+        )
